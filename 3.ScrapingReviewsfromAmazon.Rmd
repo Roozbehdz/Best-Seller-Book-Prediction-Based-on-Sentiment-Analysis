@@ -1,0 +1,195 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+```{r libraries}
+# libraries
+library(lubridate)
+library(stringr)
+library(dplyr)
+
+if(!"pacman" %in% installed.packages()[,"Package"]) install.packages("pacman")
+  pacman::p_load(RCurl, XML, dplyr, stringr, rvest, purrr)
+```
+
+```{r functions}
+# functions
+#Function to scrape elements from Amazon reviews
+scrape_amazon <- function(url, throttle = 0){
+
+  # Install / Load relevant packages
+  if(!"pacman" %in% installed.packages()[,"Package"]) install.packages("pacman")
+  pacman::p_load(RCurl, XML, dplyr, stringr, rvest, purrr)
+
+  # Set throttle between URL calls
+  sec = 0
+  if(throttle < 0) warning("throttle was less than 0: set to 0")
+  if(throttle > 0) sec = max(0, throttle + runif(1, -1, 1))
+
+  # obtain HTML of URL
+  doc <- read_html(url)
+
+  # Parse relevant elements from HTML
+  title <- doc %>%
+    html_nodes("#cm_cr-review_list .a-color-base") %>%
+    html_text()
+
+  author <- doc %>%
+    html_nodes("#cm_cr-review_list .a-profile-name") %>%
+    html_text()
+
+  date <- doc %>%
+    html_nodes("#cm_cr-review_list .review-date") %>%
+    html_text() %>%
+    gsub(".*on ", "", .)
+
+  review_format <- doc %>%
+    html_nodes(".review-format-strip") %>%
+    html_text()
+
+  stars <- doc %>%
+    html_nodes("#cm_cr-review_list  .review-rating") %>%
+    html_text() %>%
+    str_extract("\\d") %>%
+    as.numeric()
+
+  comments <- doc %>%
+    html_nodes("#cm_cr-review_list .review-text") %>%
+    html_text()
+
+  suppressWarnings(n_helpful <- doc %>%
+                     html_nodes(".a-expander-inline-container") %>%
+                     html_text() %>%
+                     gsub("\n\n \\s*|found this helpful.*", "", .) %>%
+                     gsub("One", "1", .) %>%
+                     map_chr(~ str_split(string = .x, pattern = " ")[[1]][1]) %>%
+                     as.numeric())
+
+  # Combine attributes into a single data frame
+  df <- data.frame(title, author, date, review_format, stars, comments, n_helpful, stringsAsFactors = F)
+
+  return(df)
+}
+```
+
+
+```{r scrape reviews}
+# scrape reviews
+
+
+books= c("B07L2VQBG6") # put the list of books you want to scrape
+
+
+prod1 = NULL
+eprod1 = NULL
+for(k in 1:length(books)){
+  #Product code
+  prod_code <- books[k]
+
+  url <- paste0("https://www.amazon.com/dp/", prod_code)
+  doc <- read_html(url)
+
+  prod = NULL
+ # obtain the text in the node, remove "\n" from the text, and remove white space
+ prod <- html_nodes(doc, "#productTitle") %>% html_text() %>% gsub("\n", "", .) %>% trimws()
+ prod1 = c(prod1,prod)
+
+ eprod = NULL
+  eprod <- html_nodes(doc, "#ebooksProductTitle") %>% html_text() %>% gsub("\n", "", .) %>% trimws()
+  eprod1 = c(eprod1,eprod)
+
+}
+prod = c(prod1,eprod1)
+
+#loop over books
+for(book_num in 1:length(books)){
+#Product code
+prod_code <- books[book_num]
+
+url <- paste0("https://www.amazon.com/dp/", prod_code)
+doc <- read_html(url)
+
+product = NULL
+#obtain the text in the node, remove "\n" from the text, and remove white space
+product <- html_nodes(doc, "#ebooksProductTitle") %>% html_text() %>% gsub("\n", "", .) %>% trimws()
+if(length(product) == 0){
+  product <- html_nodes(doc, "#productTitle") %>% html_text() %>% gsub("\n", "", .) %>% trimws()
+  }
+
+# Set # of pages to scrape. Note: each page contains 10 reviews.
+reviewsnum<- html_nodes(doc, "#acrCustomerReviewText") %>% html_text() %>% gsub("\n", "", .) %>% trimws()
+all_review_pages = str_remove(reviewsnum," customer reviews")
+all_review_pages = as.integer(str_remove(all_review_pages,",") )
+all_review_pages <- floor(all_review_pages/10)+1
+
+#Getting number of Reviews Per each grading star
+xstar_reviews = NULL
+xstar = c("one","two","three","four","five")
+for(x in xstar){
+  url <- paste0("https://www.amazon.com/product-reviews/",prod_code,"/ref=cm_cr_arp_d_viewopt_sr?filterByStar=",x,"_star&pageNumber=1")
+  doc_xstars = read_html(url)
+  xstar_review_pages<- html_nodes(doc_xstars,"#filter-info-section > .a-size-base") %>%     html_text() %>% gsub("\n", "", .) %>% trimws()
+  xstar_review_pages = xstar_review_pages[1]
+  xstar_review_pages = gsub("[^0-9.]", "",  xstar_review_pages)
+  xstar_review_pages = as.numeric(xstar_review_pages)
+  if(xstar_review_pages<11000){
+    xstar_review_pages = unlist(str_extract_all(as.character(xstar_review_pages),""))
+    xstar_review_pages = xstar_review_pages[length(xstar_review_pages)]
+
+  }else{
+    xstar_review_pages = unlist(str_extract_all(as.character(xstar_review_pages),""))
+    xstar_review_pages = xstar_review_pages[-c(1,2,3)]
+    for(i in 1:length(xstar_review_pages)-1){
+      a = xstar_review_pages[i]
+      a = paste(a,xstar_review_pages[i+1],collapse = "")
+
+    }
+
+    xstar_review_pages = str_remove_all(a," ")
+  }
+
+  xstar_reviews = c(xstar_reviews,xstar_review_pages)
+
+}
+
+xstar_reviews = as.numeric(xstar_reviews)
+xpages = floor(xstar_reviews/10)+1
+for(i in c(1:5)){
+  if(xpages[i]>500){
+    xpages[i]=500
+  }
+}
+
+# create empty object to write data into
+reviews_all <- NULL
+
+if(all_review_pages<=500){
+
+
+# loop over all pages
+  for(page_num in 1:all_review_pages){
+    print(paste(as.character(round(page_num/all_review_pages*100)),"%"))
+    print(page_num)
+    url <- paste0("http://www.amazon.com/product-reviews/",prod_code,"/?pageNumber=", page_num)
+    reviews <- scrape_amazon(url, throttle = 0)
+    reviews_all <- rbind(reviews_all, cbind(prod, reviews))
+  }
+
+}else{
+  for(j in c(1:5)){
+    page_num = NULL
+    for(page_num in 1:xpages[j]){
+      print(paste(xstar[j],"star",as.character(round(page_num/xpages[j]*100)),"%"))
+      print(page_num)
+      url <- paste0("https://www.amazon.com/product-reviews/",prod_code,"/ref=cm_cr_arp_d_viewopt_sr?filterByStar=",xstar[j],"_star&pageNumber=",page_num)
+      reviews <- scrape_amazon(url, throttle = 0)
+      reviews_all <- rbind(reviews_all, cbind(prod, reviews))
+    }
+  }
+
+  }
+write.csv(reviews_all,str_remove(product,":"))
+}
+
+head(reviews_all,5)

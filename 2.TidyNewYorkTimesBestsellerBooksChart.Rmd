@@ -1,0 +1,99 @@
+---
+title: 'Tidy New York Times Bestseller Books Chart  '
+author: "Roozbeh"
+date: "8/27/2019"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r libraries}
+# libraries
+library(lubridate)
+library(stringr)
+library(dplyr)
+
+if(!"pacman" %in% installed.packages()[,"Package"]) install.packages("pacman")
+  pacman::p_load(RCurl, XML, dplyr, stringr, rvest, purrr)
+```
+
+
+```{r getting the data}
+# getting the data
+nytimesdataf = read.csv("C:/Users/10/Documents/R/Julia Silge, David Robinson - Text Mining with R_ A Tidy Approach/nytimes chart books.csv")
+
+nytimesdataf = nytimesdataf[,-c(1,2,8)]
+head(nytimesdataf,5)
+
+```
+
+
+
+```{r sort out the titles by authors and publishers}
+# sort out the titles by authors and publishers
+firstweek_on_the_chart = nytimesdataf[nytimesdataf$Weeksonthelist ==1 ,]
+
+head(firstweek_on_the_chart,5)
+
+firstweek_on_the_chart %>%
+count(Publisher, sort = TRUE) %>%
+ungroup()
+
+firstweek_on_the_chart %>%
+count(Publisher, Author, sort = TRUE) %>%
+ungroup()
+
+firstweek_on_the_chart %>%
+count(Publisher, Title, sort = TRUE) %>%
+ungroup()
+
+firstweek_on_the_chart %>%
+count(Author, sort = TRUE) %>%
+ungroup()
+
+firstweek_on_the_chart %>%
+count(Author, Title, sort = TRUE) %>%
+ungroup()
+
+nytimesdataf %>%
+count(Publisher, sort = TRUE) %>%
+ungroup()
+
+nytimesdataf %>%
+count(Publisher, Author, sort = TRUE) %>%
+ungroup()
+
+nytimesdataf %>%
+count(Publisher, Title, sort = TRUE) %>%
+ungroup()
+
+nytimesdataf %>%
+count(Author, sort = TRUE) %>%
+ungroup()
+
+nytimesdataf %>%
+count(Author, Title, sort = TRUE) %>%
+ungroup()
+
+
+```
+
+
+```{r getting review of the best seller books by publishers}
+# getting review of the best seller books by publishers
+best_publishers = nytimesdataf %>%
+                  count(Publisher, sort = TRUE) %>%
+                  ungroup()
+head(best_publishers,5)
+
+titles_by_best_publishers = firstweek_on_the_chart[firstweek_on_the_chart$Publisher == "Little, Brown",]
+head(titles_by_best_publishers,5)
+
+productlist = as.character(titles_by_best_publishers$Product)
+head(productlist,5)
+```
+
+
+
+  
+          

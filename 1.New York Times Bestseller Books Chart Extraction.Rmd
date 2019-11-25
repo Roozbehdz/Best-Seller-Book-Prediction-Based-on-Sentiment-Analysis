@@ -1,0 +1,216 @@
+```{r libraries}
+# libraries
+library(lubridate)
+library(stringr)
+library(dplyr)
+
+```
+
+
+
+```{r functions}
+# functions
+scrape_nytimes <- function(url, throttle = 0){
+
+  
+  # Install / Load relevant packages
+  if(!"pacman" %in% installed.packages()[,"Package"]) install.packages("pacman")
+  pacman::p_load(RCurl, XML, dplyr, stringr, rvest, purrr)
+  
+  # Set throttle between URL calls
+  sec = 0
+  if(throttle < 0) warning("throttle was less than 0: set to 0")
+  if(throttle > 0) sec = max(0, throttle + runif(1, -1, 1))
+  
+  # obtain HTML of URL
+  doc <- xml2::read_html(url)
+  
+  # Parse relevant elements from HTML
+  Title <- doc %>%
+    html_nodes(".css-5pe77f") %>%
+    html_text()
+  
+  Author <- doc %>%
+    html_nodes(".css-1j7a9fx") %>%
+    html_text()
+  
+  Publisher <- doc %>%
+    html_nodes(".css-heg334") %>%
+    html_text()
+  
+  # Description <- doc %>%
+  #   html_nodes(".css-14lubdp") %>%
+  #   html_text()
+  
+  Weeksonthelist <- doc %>%
+    html_nodes(".css-1o26r9v") %>%
+    html_text()
+  
+  Weekdate <- doc %>%
+    html_nodes(".css-1lm6q7y") %>%
+    html_text()
+  
+  Link <- doc %>%
+    html_nodes(".css-wq7ea0") %>%
+    html_attr("href")
+  
+  Link <- Link[seq(from = 1, to = 45, by = 3)]
+    
+  
+  # Combine attributes into a single data frame
+  df <- data.frame(Title, Author, Publisher, Weeksonthelist, Weekdate, Link)
+  
+  return(df)
+  
+}
+
+get_prod = function(x){
+  c = str_split(x, "/")
+  c = unlist(c)
+  c = c[length(c)]
+  c = unlist(strsplit(c,''))
+  c = paste(c[-c(length(c))],collapse ='')
+  ;return (c)
+}
+
+```
+
+
+
+```{r getting list of sundays}
+# getting list of sundays
+today <- Sys.Date()+7
+sundays = today 
+nytimes_start_rank = as.Date("2011-02-13")
+repeat{
+  previous_sunday <- floor_date(today, "week")
+  sundays = c(sundays,previous_sunday)
+  if(previous_sunday == nytimes_start_rank){
+    sundays = sundays[-1]
+    break()}
+  today = previous_sunday -1
+}
+head(sundays,5)
+```
+
+
+
+```{r extracting fiction books rank from html}
+# extracting fiction books rank from html
+ranks_all= NULL
+# length(sundays)
+for(page_num in 2:3){
+  
+  print(paste(as.character(round(page_num/length(sundays)*100)),"%"))
+  print(page_num)
+  
+  weekscrape = as.character(sundays[page_num])
+  weekscrape = str_replace_all(weekscrape,"-","/")
+  
+  url <- paste0("https://www.nytimes.com/books/best-sellers/combined-print-and-e-book-fiction/",weekscrape)
+  ranks <- scrape_nytimes(url, throttle = 0)
+  ranks_all <- rbind(ranks_all, cbind(ranks))
+}
+
+write.csv(ranks_all,file = "nytimes chart fiction books.csv")
+
+head(ranks_all,5)
+```
+
+
+
+```{r extracting non fiction books rank from html}
+# extracting non fiction books rank from html
+ranks_all= NULL
+# length(sundays)
+for(page_num in 2:3){
+  
+  print(paste(as.character(round(page_num/length(sundays)*100)),"%"))
+  print(page_num)
+  
+  weekscrape = as.character(sundays[page_num])
+  weekscrape = str_replace_all(weekscrape,"-","/")
+  
+  url <- paste0("https://www.nytimes.com/books/best-sellers/combined-print-and-e-book-nonfiction/",weekscrape)
+  ranks <- scrape_nytimes(url, throttle = 0)
+  ranks_all <- rbind(ranks_all, cbind(ranks))
+}
+
+write.csv(ranks_all,file = "nytimes chart nonfiction books.csv")
+
+head(ranks_all,5)
+```
+
+
+
+```{r latest week extraction of  nytimes chart fiction books}
+# latest week extraction of  nytimes chart fiction books
+new_sunday = as.character(sundays[1])
+new_sunday = str_replace_all(new_sunday,"-","/")
+
+url <- paste0("https://www.nytimes.com/books/best-sellers/combined-print-and-e-book-fiction/",new_sunday)
+
+new_rank <- scrape_nytimes(url, throttle = 0)
+new_ranks_all <- read.csv("nytimes chart fiction books.csv")
+new_ranks_all = new_ranks_all[,-1]
+new_ranks_all <- rbind(new_rank, new_ranks_all)
+
+write.csv(new_ranks_all,file = "nytimes chart fiction books.csv")
+
+head(new_ranks_all,5)
+```
+
+
+
+```{r latest week extraction of  nytimes chart nonfiction books}
+# latest week extraction of  nytimes chart nonfiction books
+new_sunday = as.character(sundays[1])
+new_sunday = str_replace_all(new_sunday,"-","/")
+
+url <- paste0("https://www.nytimes.com/books/best-sellers/combined-print-and-e-book-nonfiction/",new_sunday)
+
+new_rank <- scrape_nytimes(url, throttle = 0)
+new_ranks_all <- read.csv("nytimes chart nonfiction books.csv")
+new_ranks_all = new_ranks_all[,-1]
+new_ranks_all <- rbind(new_rank, new_ranks_all)
+
+
+write.csv(new_ranks_all,file = "nytimes chart nonfiction books.csv")
+
+head(new_ranks_all,5)
+```
+
+
+
+```{r tidy datasets}
+# tidy datasets
+dataf1 = read.csv("nytimes chart fiction books.csv")
+dataf1$Type = "Fiction"
+dataf2 = read.csv("nytimes chart nonfiction books.csv")
+dataf2$Type = "Non Fiction"
+dataf = rbind(dataf1,dataf2)
+
+dataf$Weekdate = format(as.Date(dataf$Weekdate, "%B %d,%Y"))
+dataf$Weekdate = as.Date(dataf$Weekdate,"%Y-%m-%d")
+
+dataf$Weeksonthelist = str_remove_all(dataf$Weeksonthelist," Weeks on the list")
+dataf$Weeksonthelist = str_replace_all(dataf$Weeksonthelist,"New this week","1")
+dataf$Weeksonthelist = as.numeric(dataf$Weekso)
+
+dataf$Author = str_remove_all(dataf$Author,"by ")
+
+dataf$Title = str_to_title(dataf$Title)
+
+dataf$Link = str_remove_all(dataf$Link, "tag=NYTBS-20")
+
+for (i in 1:length(dataf$Link)){
+  dataf$Product[i] = get_prod(dataf$Link[i])
+}
+
+write.csv(dataf, "nytimes chart books.csv")
+
+```
+
+
+
+
